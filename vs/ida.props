@@ -2,20 +2,16 @@
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ImportGroup Label="PropertySheets" />
   <PropertyGroup Label="UserMacros">
-    <IDA_SDK_DIR>..\..\..\</IDA_SDK_DIR>
-    <IDA_DIR>C:\Program Files\IDA Pro 8.3\</IDA_DIR>
-    <IDA_PROCS_DIR>$(IDA_DIR)procs\</IDA_PROCS_DIR>
-    <ida64>false</ida64>
-    <ida64 Condition="$(Configuration.EndsWith('64'))">true</ida64>
+    <IDA_SDK_DIR></IDA_SDK_DIR>
+    <IDA_PROCS_DIR></IDA_PROCS_DIR>
+    <IDA_COPY_TO_PLUGINS>false</IDA_COPY_TO_PLUGINS>
   </PropertyGroup>
   <PropertyGroup>
-    <IncludePath>$(IDA_SDK_DIR)include;$(IDA_SDK_DIR)module;$(IncludePath)</IncludePath>
-  </PropertyGroup>
-  <PropertyGroup Condition="'$(ida64)'=='false'">
-    <LibraryPath>$(IDA_SDK_DIR)lib\x64_win_vc_32_pro;$(LibraryPath)</LibraryPath>
-  </PropertyGroup>
-  <PropertyGroup Condition="'$(ida64)'=='true'">
-    <LibraryPath>$(IDA_SDK_DIR)lib\x64_win_vc_64_pro;$(LibraryPath)</LibraryPath>
+    <idasdklib Condition="$(IDA_SDK_DIR.Contains('8')) ">_pro</idasdklib>
+    <idabitness>32</idabitness>
+    <idabitness Condition="$(Configuration.EndsWith('64'))">64</idabitness>
+    <IncludePath>$(IDA_SDK_DIR)\include;$(IDA_SDK_DIR)\module;$(IncludePath)</IncludePath>
+    <LibraryPath>$(IDA_SDK_DIR)\lib\x64_win_vc_$(idabitness)$(idasdklib);$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <ItemDefinitionGroup>
     <Link>
@@ -27,10 +23,10 @@
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <ForcedIncludeFiles>pch.h;%(ForcedIncludeFiles)</ForcedIncludeFiles>
     </ClCompile>
-    <ClCompile Condition="'$(ida64)'=='true'">
+    <ClCompile Condition="'$(idabitness)'=='64'">
       <PreprocessorDefinitions>__EA64__;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
-    <PostBuildEvent>
+    <PostBuildEvent Condition="'$(IDA_COPY_TO_PLUGINS)'=='true'">
       <Command>xcopy $(TargetPath) "$(IDA_PROCS_DIR)" /d /y</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
