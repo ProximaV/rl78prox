@@ -115,11 +115,11 @@ enum : decltype(insn_t::itype) {
 	RL78_stop,
 	// not real opcode?
 	RL78_brk1,
-	RL78_itype_count
+	RL78_last //RL78_itype_count
 };
 
-static const instruc_t instructions[] = {
-	{ "" },
+static const instruc_t Instructions[] = {
+	{ "", 0 }, // { "" }
 	{ "mov",	CF_CHG1 | CF_USE2 },
 	{ "xch",	CF_CHG1 | CF_CHG2 },
 	{ "oneb",	CF_CHG1 },
@@ -143,12 +143,12 @@ static const instruc_t instructions[] = {
 	{ "subw",	CF_CHG1 | CF_USE2 },
 	{ "cmpw",	CF_USE1 | CF_USE2 },
 	{ "mulu",	CF_USE1 },
-	{ "mulhu",	 },
-	{ "mulh",	 },
-	{ "divhu",	 },
-	{ "divwu",	 },
-	{ "machu",	 },
-	{ "mach",	 },
+	{ "mulhu", 0 },
+	{ "mulh", 0 },
+	{ "divhu", 0 },
+	{ "divwu", 0 },
+	{ "machu", 0 },
+	{ "mach", 0 },
 	{ "inc",	CF_CHG1 },
 	{ "dec",	CF_CHG1 },
 	{ "incw",	CF_CHG1 },
@@ -189,82 +189,21 @@ static const instruc_t instructions[] = {
 	{ "bt",		CF_USE1 | CF_USE2 },
 	{ "bf",		CF_USE1 | CF_USE2 },
 	{ "btclr",	CF_USE1 | CF_USE2 },
-	{ "skc",	 }, // sk* possibly branch over *next* insn
-	{ "sknc",	 },
-	{ "skz",	 },
-	{ "sknz",	 },
-	{ "skh",	 },
-	{ "sknh",	 },
-	{ "sel",	 }, // CF_USE1 ?
-	{ "nop",	 },
-	{ "ei",		 }, // ei/di are macros
-	{ "di",		 },
-	{ "halt",	 },
+	{ "skc", 0 }, // sk* possibly branch over *next* insn
+	{ "sknc",	0 },
+	{ "skz", 0 },
+	{ "sknz", 0 },
+	{ "skh", 0 },
+	{ "sknh", 0 },
+	{ "sel", 0 }, // CF_USE1 ?
+	{ "nop", 0 },
+	{ "ei",	0 }, // ei/di are macros
+	{ "di", 0 },
+	{ "halt",	0 },
 	{ "stop",   CF_STOP },
 	{ "brk1",   CF_STOP },
 };
-static_assert(qnumber(instructions) == RL78_itype_count, "array doesn't match enum");
-
-static const asm_t assembler = {
-	AS_COLON | AS_N2CHR | ASH_HEXF0 | ASD_DECF0 | ASB_BINF0 | AS_ONEDUP | AS_NOXRF,
-	0,
-	"RL78 Assembler",
-	0,
-	nullptr,		// array of automatically generated header lines
-					// they appear at the start of disassembled text
-	".org",			// org directive
-	".end",			// end directive
-	";",			// comment string (see also cmnt2)
-	'"',			// string literal delimiter
-	'\'',			// char constant delimiter
-	"'\"",			// special chars that can not appear
-					// as is in string and char literals
-	// Data representation (db,dw,...):
-	".db",			// ascii
-	".db",			// byte
-	".dw",			// word
-	".dd",			// dword
-	nullptr,		// qword
-	nullptr,		// oword
-	nullptr,		// float
-	nullptr,		// double
-	nullptr,		// tbytes
-	nullptr,		// packreal
-	nullptr,		// dups
-	nullptr,		// bss
-	".equ",			// equ
-	nullptr,		// seg
-	"$",			// curip
-	nullptr,		// out_func_header
-	nullptr,		// out_func_footer
-	nullptr,		// public
-	nullptr,		// weak
-	nullptr,		// extern
-	nullptr,		// communal variable
-	nullptr,		// get_type_name
-	nullptr,		// align
-	'(',			// lbrace
-	')',			// rbrace
-	// Assembler-time operators
-	nullptr,		// %
-	nullptr,		// &
-	nullptr,		// |
-	nullptr,		// ^
-	nullptr,		// ~
-	nullptr,		// <<
-	nullptr,		// >>
-	nullptr,		// size of type (format string)
-	0,				// flag2
-	nullptr,		// cmnt2
-	nullptr,		// low8
-	nullptr,		// high8
-	nullptr,		// low16
-	nullptr,		// high16
-	nullptr,		// include_fmt
-	nullptr,		// vstruc_fmt
-	nullptr,		// rva
-	nullptr,		// yword
-};
+static_assert(qnumber(Instructions) == RL78_last, "array doesn't match enum");
 
 #define RL78_MAX_OPERANDS 2
 
@@ -2492,6 +2431,7 @@ common chunk
 1  movw    ax, es:word_2CED8[bc]
 0  br      ax
 */
+
 //#define JUMP_DEBUG
 #include "jptcmn.cpp"
 static const char rl78_jmp_roots[] = { 1, 2, 0 };
@@ -2523,7 +2463,7 @@ public:
 };
 
 bool rl78_jmp_pattern_t::jpi6() {
-	msg("%x jpi6: %s\n", insn.ea, instructions[insn.itype].name);
+	msg("%x jpi6: %s\n", insn.ea, Instructions[insn.itype].name);
 	return true;
 }
 
@@ -2604,112 +2544,199 @@ static int is_switch(switch_info_t *si, const insn_t &insn) {
 		create_table) ? 1 : 0;
 }
 
-static ssize_t idaapi notify(void *, int msgid, va_list va) {
+#if IDA_SDK_VERSION >= 750
+static ssize_t idaapi notify(void*, int msgid, va_list va);
+
+struct rl78_t : public procmod_t {
+	ssize_t idaapi on_event(ssize_t code, va_list va) override
+	{
+		return notify(NULL, code, va);
+	}
+};
+
+static int data_id;
+#endif
+
+static ssize_t idaapi notify(void*, int msgid, va_list va)
+{
 	switch (msgid) {
+#if IDA_SDK_VERSION >= 750
+	case processor_t::ev_get_procmod: {
+		return size_t(SET_MODULE_DATA(rl78_t));
+	}
+#endif
 	case processor_t::ev_newfile:
-		newfile(va_arg(va, char *));
+		newfile(va_arg(va, char*));
 		break;
 	case processor_t::ev_creating_segm:
 		break;
 	case processor_t::ev_ana_insn:
-		return ana(va_arg(va, insn_t *));
+		return ana(va_arg(va, insn_t*));
 	case processor_t::ev_emu_insn:
-		return emu(*va_arg(va, insn_t *));
+		return emu(*va_arg(va, insn_t*));
 	case processor_t::ev_out_mnem:
 		break;
 	case processor_t::ev_out_insn: {
-		auto ctx = va_arg(va, outctx_t *);
+		auto ctx = va_arg(va, outctx_t*);
 		out_insn(*ctx);
-	  } break;
+	} break;
 	case processor_t::ev_out_operand: {
-		auto ctx = va_arg(va, outctx_t *);
-		auto op = va_arg(va, const op_t *);
+		auto ctx = va_arg(va, outctx_t*);
+		auto op = va_arg(va, const op_t*);
 		return out_opnd(*ctx, *op) ? 1 : -1;
-	  }
+	}
 	case processor_t::ev_is_align_insn:
 		return is_align_insn(va_arg(va, ea_t));
 	case processor_t::ev_get_reg_info: {
-		auto main_regname = va_arg(va, const char **);
-		auto bitrange = va_arg(va, bitrange_t *);
-		auto regname = va_arg(va, const char *);
+		auto main_regname = va_arg(va, const char**);
+		auto bitrange = va_arg(va, bitrange_t*);
+		auto regname = va_arg(va, const char*);
 		return get_reg_info(main_regname, bitrange, regname);
-	  }
+	}
 	case processor_t::ev_create_func_frame:
-		create_func_frame(va_arg(va, func_t *));
+		create_func_frame(va_arg(va, func_t*));
 		return 1;
 	case processor_t::ev_is_sp_based: {
-		auto mode = va_arg(va, int *);
-		auto insn = va_arg(va, insn_t *);
-		auto op = va_arg(va, op_t *);
+		auto mode = va_arg(va, int*);
+		auto insn = va_arg(va, insn_t*);
+		auto op = va_arg(va, op_t*);
 		is_sp_based(mode, *insn, *op);
 		return 1;
-	  }
+	}
 	case processor_t::ev_may_be_func: {
-		auto insn = va_arg(va, const insn_t *);
+		auto insn = va_arg(va, const insn_t*);
 		auto state = va_arg(va, int);
 		return may_be_func(*insn, state);
-	  }
+	}
 	case processor_t::ev_is_switch: {
-		auto si = va_arg(va, switch_info_t *);
-		auto insn = va_arg(va, insn_t *);
+		auto si = va_arg(va, switch_info_t*);
+		auto insn = va_arg(va, insn_t*);
 		return is_switch(si, *insn);
-	  }
+	}
 	case processor_t::ev_calc_switch_cases: {
-		auto casevec = va_arg(va, casevec_t *);
-		auto targets = va_arg(va, eavec_t *);
+		auto casevec = va_arg(va, casevec_t*);
+		auto targets = va_arg(va, eavec_t*);
 		auto insn_ea = va_arg(va, ea_t);
-		auto si = va_arg(va, switch_info_t *);
-	  } break;
+		auto si = va_arg(va, switch_info_t*);
+	} break;
 	case processor_t::ev_create_switch_xrefs: {
 		auto insn_ea = va_arg(va, ea_t);
-		auto si = va_arg(va, switch_info_t *);
-	  } break;
+		auto si = va_arg(va, switch_info_t*);
+	} break;
 	}
 	return 0;
 }
 
+static const asm_t rl78 = {
+	AS_COLON | AS_N2CHR | ASH_HEXF0 | ASD_DECF0 | ASB_BINF0 | AS_ONEDUP | AS_NOXRF, // AS_COLON
+	0,
+	"RL78 Assembler",
+	0,
+	nullptr,		// array of automatically generated header lines
+					// they appear at the start of disassembled text
+	".org",			// org directive
+	".end",			// end directive
+	";",			// comment string (see also cmnt2)
+	'"',			// " string literal delimiter
+	'\'',			// char constant delimiter
+	"'\"",			// special chars that can not appear
+					// as is in string and char literals
+	// Data representation (db,dw,...):
+	".ascii",			// ascii (db)
+	".byte",			// byte (db)
+	".word",			// word (dw)
+	".long",			// dword (dd)
+	".quad",		// qword (nullptr)
+	nullptr,		// oword
+	".float",		// float (nullptr)
+	".double",	// double (nullptr)
+	nullptr,		// tbytes
+	nullptr,		// packreal
+	nullptr,		// dups
+	".block %s",// bss (nullptr)
+	".equ",			// equ
+	nullptr,		// seg
+	"$",			// curip
+	nullptr,		// out_func_header
+	nullptr,		// out_func_footer
+	nullptr,		// public
+	nullptr,		// weak
+	nullptr,		// extern
+	nullptr,		// communal variable
+	nullptr,		// get_type_name
+	nullptr,		// align
+	'(',			// lbrace
+	')',			// rbrace
+	// Assembler-time operators
+	nullptr,		// %
+	nullptr,		// &
+	nullptr,		// |
+	nullptr,		// ^
+	nullptr,		// ~
+	nullptr,		// <<
+	nullptr,		// >>
+	nullptr,		// size of type (format string)
+	0,				// flag2
+	nullptr,		// cmnt2
+	nullptr,		// low8
+	nullptr,		// high8
+	nullptr,		// low16
+	nullptr,		// high16
+	nullptr,		// include_fmt
+	nullptr,		// vstruc_fmt
+	nullptr,		// rva
+	nullptr,		// yword
+};
 
-static const char *const short_names[] = {
+static const char *const shnames[] = {
 	"rl78",
 	nullptr
 };
 
-static const char *const long_names[] = {
+static const char *const lnames[] = {
 	"Renesas RL78",
 	nullptr
 };
 
-static const asm_t *const assemblers[] = {
-	&assembler,
+static const asm_t *const asms[] = {
+	&rl78,
 	nullptr
 };
 
-idaman processor_t ida_module_data LPH = {
+static const uchar retcRL78_0[] = { 0xAF };    // ret
+static const uchar retcRL78_1[] = { 0xBF };    // brk
+
+static const bytes_t retcodes[] = {
+	{ sizeof(retcRL78_0), retcRL78_0 },
+	{ sizeof(retcRL78_1), retcRL78_1 },
+	{ 0, nullptr }
+};
+
+processor_t LPH = { // idaman processor_t ida_module_data LPH
 	IDP_INTERFACE_VERSION,
-	0x8000 + 0x78,
-	PR_SEGS | PRN_HEX | PR_ALIGN_INSN |
-	PR_USE32 | PR_DEFSEG32,
-	0,
+	0x8000 + PLFM_RL78,
+	PR_SEGS | PRN_HEX | PR_ALIGN_INSN | PR_USE32 | PR_DEFSEG32, // PR_SEGS | PR_USE32 | PR_RNAMESOK | PRN_HEX | PR_SGROTHER | PR_SEGTRANS, // 0x000001, 0x000000, 0x1000000, 0x000002, 0x000004 = 0x1000007
+	0,     // PR2_MAPPINGS
 	8,
 	8,
-	short_names,
-	long_names,
-	assemblers,
+	shnames,
+	lnames,
+	asms,
 	notify,
 	reg_names,
 	qnumber(reg_names),
 	rVcs,
 	rES,
 	1,
-	rVcs,
-	rVds,
-	nullptr,
-	nullptr,
-	0,
-	RL78_itype_count,
-	instructions,
-	0,
-	{},
-	RL78_ret,
-	nullptr
+	rVcs,             // reg_code_sreg
+	rVds,             // reg_data_sreg
+	nullptr,          // codestart
+	retcodes,         // retcodes (nullptr)
+	0,                // instruc_start
+	RL78_last,        // instruct_end (RL78_itype_count)
+	Instructions,
+	0,                // tbyte_size
+	{0, 0, 0, 0},     // read_width (empty?)
+	0,                // icode_return (RL78_ret)
+	nullptr           // unused_slot
 };
