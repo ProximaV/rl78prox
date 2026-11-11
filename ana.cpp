@@ -786,10 +786,22 @@ static int opcode_71(insn_t* out) {
 		operand_r_bit(out, 0, rA, bit);
 		operand_r(out, 1, rCY);
 		break;
-	case 0x0a: // set1 sfr.bit
-	case 0x0b: // clr1 sfr.bit
-		operand_sfr_bit(out, 0, bit);
+	case 0x0a: // set1 sfr.bit / EI (71 7A FA)
+	case 0x0b: { // clr1 sfr.bit / DI (71 7B FA)
+		uint8 sfr_byte = out->get_next_byte();
+		if (bit == 7 && sfr_byte == 0xfa) {
+			out->itype = (code_lo == 0x0a) ? RL78_ei : RL78_di;
+			break;
+		}
+		auto& op = out->ops[0];
+		op.type = o_bit;
+		op.bit_base_type = o_mem;
+		op.dtype = dt_byte;
+		op.addr = sfr_abs(sfr_byte);
+		op.value = bit;
+		operand_convert_to_r(out, 0);
 		break;
+	}
 	case 0x8a: // set1 a.bit
 	case 0x8b: // clr1 a.bit
 		operand_r_bit(out, 0, rA, bit);
@@ -1466,11 +1478,31 @@ int rl78_t::rl78_ana(insn_t* out) {
 			operand_saddr(out, 0);
 			operand_imm8(out, 1);
 			break;
-		case 0xce: // mov sfr, #byte
+		case 0xce: { // mov sfr, #byte OR S3 extended math (CE FB [01|02|03|0B|05|06])
+			uint8 sfr_byte = out->get_next_byte();
+			if (sfr_byte == 0xfb) {
+				uint8 ext_op = out->get_next_byte();
+				switch (ext_op) {
+				case 0x01: out->itype = RL78_mulhu; break;
+				case 0x02: out->itype = RL78_mulh; break;
+				case 0x03: out->itype = RL78_divhu; break;
+				case 0x0b: out->itype = RL78_divwu; break;
+				case 0x05: out->itype = RL78_machu; break;
+				case 0x06: out->itype = RL78_mach; break;
+				default:
+					return 0;
+				}
+				break;
+			}
 			out->itype = RL78_mov;
-			operand_sfr(out, 0);
+			auto& op = out->ops[0];
+			op.type = o_mem;
+			op.dtype = dt_byte;
+			op.addr = sfr_abs(sfr_byte);
+			operand_convert_to_r(out, 0);
 			operand_imm8(out, 1);
 			break;
+		}
 		case 0xcf: // mov !addr16, #byte
 			out->itype = RL78_mov;
 			operand_addr16_abs_d(out, 0);

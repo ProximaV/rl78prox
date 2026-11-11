@@ -61,6 +61,13 @@ static void handle_operand(const insn_t& insn, int op_idx, bool is_alt,
 		if (ea != BADADDR) {
 			insn.create_op_data(ea, op);
 			insn.add_dref(ea, op.offb, is_load ? dr_R : dr_W);
+			if (insn.itype == RL78_callt && op.type == o_mem && is_loaded(ea)) {
+				ea_t target = get_word(ea);
+				insn.add_cref(target, op.offb, fl_CN);
+				if (*flow) {
+					*flow = func_does_return(target);
+				}
+			}
 		}
 		break;
 	case o_near:
@@ -77,7 +84,7 @@ static void handle_operand(const insn_t& insn, int op_idx, bool is_alt,
 
 	// Check if a stack variable can be created
 	if (!has_prefix(op) && may_create_stkvars() && !is_defarg(F, op.n)) {
-		if (op.type == o_displ && op.ind_reg == rHL) {
+		if (op.type == o_displ && (op.ind_reg == rHL || op.ind_reg == rSP)) {
 			func_t* pfn = get_func(insn.ea);
 			if (pfn && (pfn->flags & FUNC_FRAME)) {
 				if (insn.create_stkvar(op, op.addr, STKVAR_VALID_SIZE)) {
@@ -226,16 +233,25 @@ void rl78_t::create_func_frame(func_t* pfn) {
 	// a stack frame with local vars, anyways.
 	bool saves[4]{};
 
-	for (int i = 0; i < 10 && ea < pfn->end_ea; i++) {
+	for (int i = 0; i < 30 && ea < pfn->end_ea; i++) {
 		if (!decode_insn(&insn, ea)) {
+			break;
+		}
+		// If we encounter a call or return, the prologue has ended
+		if (has_insn_feature(insn.itype, CF_CALL) || insn.itype == RL78_ret || insn.itype == RL78_reti) {
 			break;
 		}
 		// push rp
 		if (insn.itype == RL78_push && !insn.Op1.is_reg(rPSW)) {
-			auto& reg_saved = saves[insn.Op1.reg - rAX];
-			if (!reg_saved) {
-				frregs += 2;
-				reg_saved = true;
+			if (insn.Op1.reg >= rAX && insn.Op1.reg <= rHL) {
+				auto& reg_saved = saves[insn.Op1.reg - rAX];
+				if (!reg_saved) {
+					frregs += 2;
+					reg_saved = true;
+				}
+				else {
+					frsize += 2;
+				}
 			}
 			else {
 				frsize += 2;
@@ -252,11 +268,6 @@ void rl78_t::create_func_frame(func_t* pfn) {
 		else if (insn.itype == RL78_subw && insn.Op1.is_reg(rSP)) {
 			frsize += insn.Op2.value;
 		}
-		// prologue sequence ended without setting hl
-		else {
-			// stop now so frame doesn't include space pushed for calls
-			break;
-		}
 		ea += insn.size;
 	}
 
@@ -266,7 +277,10 @@ void rl78_t::create_func_frame(func_t* pfn) {
 }
 
 void rl78_t::is_sp_based(int* mode, const insn_t& insn, const op_t& op) {
-	*mode = OP_SP_ADD | (op.is_reg(rSP) ? OP_SP_BASED : OP_FP_BASED);
+	if (op.type == o_displ && op.ind_reg == rSP)
+		*mode = OP_SP_ADD | OP_SP_BASED;
+	else
+		*mode = OP_SP_ADD | OP_FP_BASED;
 }
 
 static void fuse_far_ptrs(const insn_t& insn) {
@@ -322,6 +336,13 @@ int rl78_t::rl78_emu(const insn_t& insn) {
 		insn_t next_insn;
 		if (decode_insn(&next_insn, insn.ea + insn.size)) {
 			add_cref(insn.ea, next_insn.ea + next_insn.size, fl_JN);
+		}
+	}
+
+	if (insn.itype == RL78_br && insn.Op1.is_reg(rAX)) {
+		switch_info_t si;
+		if (get_switch_info(&si, insn.ea) <= 0) {
+			processor_t::is_switch(&si, insn);
 		}
 	}
 

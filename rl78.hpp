@@ -17,10 +17,17 @@
 #include <segment.hpp>
 #include <segregs.hpp>
 #include <kernwin.hpp>
+#include <typeinf.hpp>
+#include <nalt.hpp>
 #include "ins.hpp"
 #include "../idaidp.hpp"
 #include "../iohandler.hpp"
 
+#define PROCMOD_NODE_NAME "$ RL78"
+#define PROCMOD_NAME rl78
+
+struct merge_data_t;
+void create_std_procmod_handlers(merge_data_t &md);
 
 DECLARE_PROC_LISTENER(idb_listener_t, struct rl78_t);
 
@@ -39,9 +46,6 @@ struct rl78_t : public procmod_t
 	void create_func_frame(func_t* pfn);
 	void is_sp_based(int* mode, const insn_t& insn, const op_t& op);
 };
-
-#define PROCMOD_NODE_NAME "$ RL78"
-#define PROCMOD_NAME RL78
 
 // In reality all registers are just references to memory locations.
 // Pick the ones which are architecturally defined to be commonly used in

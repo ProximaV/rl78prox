@@ -75,10 +75,15 @@ bool out_rl78_t::out_operand(const op_t& x) {
 		out_value(x, OOFW_IMM);
 		return true;
 	case o_mem: {
+		bool is_callt = (insn.itype == RL78_callt);
+		if (is_callt)
+			out_symbol('[');
 		ea_t ea = calc_data_ea(insn, x.addr);
 		if (ea == BADADDR || !out_name_expr(x, ea)) {
 			out_value(x, OOF_ADDR | OOFW_24);
 		}
+		if (is_callt)
+			out_symbol(']');
 	} return true;
 	case o_bit:
 		if (x.addr_mode == kIndirect) {
