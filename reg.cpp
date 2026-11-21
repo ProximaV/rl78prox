@@ -125,7 +125,8 @@ static int get_reg_info(const char **main_regname, bitrange_t *bitrange, const c
 		{ "de",  "de", 0, 16 },
 		{ "hl",  "hl", 0, 16 },
 		{ "sp",  "sp", 0, 16 },
-		{ "psw", "psw", 0, 16 },
+		{ "psw", "psw", 0,  8 },
+		{ "cy",  "psw", 0,  1 },
 		{ "cs",  "cs", 0,  8 },
 		{ "es",  "es", 0,  8 },
 	};
@@ -141,7 +142,7 @@ static int get_reg_info(const char **main_regname, bitrange_t *bitrange, const c
 			return 1;
 		}
 	}
-	return -1;
+	return 0;
 }
 
 // not sure why, but this doesn't seem to be called very often
