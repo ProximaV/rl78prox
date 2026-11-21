@@ -14,6 +14,21 @@ ida_add_procmod(rl78prox
 
 target_include_directories(rl78prox PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
+if(MSVC)
+    get_filename_component(RL78PROX_SDK_SRC_ABS "${CMAKE_CURRENT_SOURCE_DIR}/../.." ABSOLUTE)
+    file(TO_NATIVE_PATH "${RL78PROX_SDK_SRC_ABS}" RL78PROX_SDK_SRC_NATIVE)
+    file(TO_NATIVE_PATH "${CMAKE_CURRENT_SOURCE_DIR}" RL78PROX_SRC_PREFIX_NATIVE)
+    target_compile_options(rl78prox PRIVATE
+        "/d1trimfile:${RL78PROX_SRC_PREFIX_NATIVE}\\"
+        "/d1trimfile:${RL78PROX_SDK_SRC_NATIVE}\\"
+    )
+    target_link_options(rl78prox PRIVATE $<$<CONFIG:Release>:/PDBALTPATH:%_PDB%>)
+else()
+    target_compile_options(rl78prox PRIVATE
+        "-ffile-prefix-map=${CMAKE_CURRENT_SOURCE_DIR}/="
+    )
+endif()
+
 if(DEFINED ENV{APPDATA})
     set(IDA_USER_DIR "$ENV{APPDATA}/Hex-Rays/IDA Pro")
 
