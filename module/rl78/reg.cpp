@@ -942,13 +942,11 @@ ssize_t idaapi rl78_t::on_event(ssize_t msgid, va_list va)
 
 
 static const char *const short_names[] = {
-	"rl78prox",
 	"rl78",
 	nullptr
 };
 
 static const char *const long_names[] = {
-	"Renesas RL78prox",
 	"Renesas RL78",
 	nullptr
 };

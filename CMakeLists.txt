@@ -1,41 +1,46 @@
-# Processor Module: rl78prox
-ida_add_procmod(rl78prox
-    SOURCES
-        ana.cpp
-        emu.cpp
-        ins.cpp
-        merge.cpp
-        out.cpp
-        reg.cpp
-        ../idaidp.hpp
-        rl78.hpp
-        ins.hpp
-)
+cmake_minimum_required(VERSION 3.25)
 
-target_include_directories(rl78prox PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+if(NOT PROJECT_NAME)
+    if(NOT DEFINED IDASDK OR "${IDASDK}" STREQUAL "")
+        if(DEFINED ENV{IDASDK} AND NOT "$ENV{IDASDK}" STREQUAL "")
+            set(IDASDK "$ENV{IDASDK}")
+        elseif(DEFINED IDA_SDK_DIR AND EXISTS "${IDA_SDK_DIR}/include/pro.h")
+            set(IDASDK "${IDA_SDK_DIR}")
+        elseif(DEFINED ENV{IDA_SDK_DIR} AND EXISTS "$ENV{IDA_SDK_DIR}/include/pro.h")
+            set(IDASDK "$ENV{IDA_SDK_DIR}")
+        elseif(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../../include/pro.h")
+            get_filename_component(IDASDK "${CMAKE_CURRENT_SOURCE_DIR}/../.." ABSOLUTE)
+        endif()
+    endif()
 
-if(MSVC)
-    get_filename_component(RL78PROX_SDK_SRC_ABS "${CMAKE_CURRENT_SOURCE_DIR}/../.." ABSOLUTE)
-    file(TO_NATIVE_PATH "${RL78PROX_SDK_SRC_ABS}" RL78PROX_SDK_SRC_NATIVE)
-    file(TO_NATIVE_PATH "${CMAKE_CURRENT_SOURCE_DIR}" RL78PROX_SRC_PREFIX_NATIVE)
-    target_compile_options(rl78prox PRIVATE
-        "/d1trimfile:${RL78PROX_SRC_PREFIX_NATIVE}\\"
-        "/d1trimfile:${RL78PROX_SDK_SRC_NATIVE}\\"
-    )
-    target_link_options(rl78prox PRIVATE $<$<CONFIG:Release>:/PDBALTPATH:%_PDB%>)
-else()
-    target_compile_options(rl78prox PRIVATE
-        "-ffile-prefix-map=${CMAKE_CURRENT_SOURCE_DIR}/="
-    )
+    if(IDASDK AND EXISTS "${IDASDK}/cmake/idasdk_standalone.cmake")
+        set(ENV{IDASDK} "${IDASDK}")
+        include("${IDASDK}/cmake/idasdk_standalone.cmake")
+    endif()
+
+    project(rl78_suite LANGUAGES CXX)
+    set(CMAKE_CXX_STANDARD 17)
+    set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+    if(IDASDK AND EXISTS "${IDASDK}/cmake/idasdk_init.cmake")
+        include("${IDASDK}/cmake/idasdk_init.cmake")
+        find_package(idasdk REQUIRED HINTS "${IDASDK}/cmake")
+    endif()
+
+    enable_testing()
 endif()
 
-if(DEFINED ENV{APPDATA})
-    set(IDA_USER_DIR "$ENV{APPDATA}/Hex-Rays/IDA Pro")
+option(RL78_BUILD_PROCMOD "Build the Renesas RL78 IDA Pro processor module (rl78)" ON)
+option(RL78_BUILD_EMU "Build the RL78 emulator, tests, and native debugger plugin (rl78emu / rl78dbg)" ON)
 
-    add_custom_command(TARGET rl78prox POST_BUILD
-        COMMAND "${CMAKE_COMMAND}" -E make_directory "${IDA_USER_DIR}/procs"
-        COMMAND "${CMAKE_COMMAND}" -E copy_if_different "$<TARGET_FILE:rl78prox>" "${IDA_USER_DIR}/procs/$<TARGET_FILE_NAME:rl78prox>"
-        COMMAND "${CMAKE_COMMAND}" -E copy_if_different "$<TARGET_FILE:rl78prox>" "${IDA_USER_DIR}/procs/rl78.dll"
-        COMMENT "Deploying rl78prox procmod to IDA Pro user directory"
-    )
+if(RL78_BUILD_PROCMOD)
+    if(COMMAND ida_add_procmod)
+        add_subdirectory(module/rl78)
+    else()
+        message(STATUS "RL78 processor module skipped (IDA SDK not configured)")
+    endif()
+endif()
+
+if(RL78_BUILD_EMU)
+    add_subdirectory(plugins/rl78emu)
 endif()

@@ -5,6 +5,6 @@
 
 #include "rl78.hpp"
 #include <merge.hpp>
-#include "../mergecmn.cpp"
+#include <mergecmn.cpp>
 
 DEFINE_SIMPLE_PROCMOD_HANDLER(idbattr_device_name)

@@ -20,8 +20,8 @@
 #include <typeinf.hpp>
 #include <nalt.hpp>
 #include "ins.hpp"
-#include "../idaidp.hpp"
-#include "../iohandler.hpp"
+#include <idaidp.hpp>
+#include <iohandler.hpp>
 
 #define PROCMOD_NODE_NAME "$ RL78"
 #define PROCMOD_NAME rl78
