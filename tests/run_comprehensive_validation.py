@@ -15,7 +15,7 @@ import sys
 def main():
     print("==================================================================")
     print("   RL78PROX COMPREHENSIVE REAL-WORLD VALIDATION SUITE            ")
-    print("   Target Database: DOL-1001-VTE-1001-00703030.i64 (1MB PS4 Syscon ROM) ")
+    print("   Target Database: DOL-1001-VTE-1001-00703030.i64  ")
     print("==================================================================")
 
     # 1. Check processor identification
