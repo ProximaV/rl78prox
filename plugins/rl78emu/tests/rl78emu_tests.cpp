@@ -484,6 +484,74 @@ void TestFlashSelfProgrammingAndBootSwap() {
     EXPECT_TRUE(out.find("NORMAL") != std::string::npos);
 }
 
+void TestTau1TickWakeAndPreemptiveSwitch() {
+    auto m = MakeMachine();
+
+    // Vector 0x0056 (INTTM10 / IF2H.1) -> ISR @ 0x03200
+    WriteBytes(m, 0x00056u, { 0x00, 0x32 });
+
+    // Pre-build a suspended Task 2 frame on Stack B (SP = 0xFD00 -> 0xFEFD00):
+    // Resume PC = 0x02200, PSW = 0x86 (IE=1, ISP=3, RBS=0).
+    m.bus.PokeByte(0xFE502u, 0x00u);
+    m.bus.PokeByte(0xFE503u, 0xFDu);  // Task 2 saved SP = 0xFD00
+    m.bus.PokeByte(0xFE500u, 0x00u);  // tick counter
+    m.bus.PokeByte(0xFE504u, 0x00u);  // Task 2 sentinel
+    m.bus.PokeByte(0xFFD00u, 0x00u);
+    m.bus.PokeByte(0xFFD01u, 0x22u);
+    m.bus.PokeByte(0xFFD02u, 0x00u);
+    m.bus.PokeByte(0xFFD03u, 0x86u);
+
+    // Task 1 @ 0x01000: configure 4-ch TAU1 ch0, start TS1.0, EI, then loop HALT
+    WriteBytes(m, 0x01000u, {
+        0x71, 0x10, 0xF0, 0x00,  // set1 !PER0.1
+        0xCF, 0xDE, 0x01, 0xF0,  // mov !TPS1 (0xF01DE), #0xF0
+        0xF6,                    // clrw ax
+        0xBF, 0xC8, 0x01,        // movw !TMR10 (0xF01C8), ax
+        0xCB, 0x70, 0x40, 0x00,  // movw TDR10 (0xFFF70), #0x0040
+        0x71, 0x1B, 0xD1,        // clr1 IF2H.1
+        0x71, 0x1B, 0xD5,        // clr1 MK2H.1
+        0xE5, 0xDA, 0x01,        // oneb !TS1 (0xF01DA)
+        0x71, 0x7A, 0xFA,        // ei
+        0x61, 0xED,              // halt (@ 0x0101C)
+        0xEF, 0xFC,              // br $-4
+    });
+
+    // Verify disassembler resolves 4-channel TAU1 SFR names cleanly
+    const auto d_tps = rl78::DisassembleAt(m.bus, 0x01004u);
+    EXPECT_TRUE(d_tps.operands.find("TPS1") != std::string::npos);
+    const auto d_ts = rl78::DisassembleAt(m.bus, 0x01016u);
+    EXPECT_TRUE(d_ts.operands.find("TS1") != std::string::npos);
+
+    // INTTM10 ISR @ 0x03200: increment tick counter, swap SP to Task 2 frame, RETI
+    WriteBytes(m, 0x03200u, {
+        0xA0, 0x00, 0xE5,        // inc !0xFE500
+        0xAF, 0x02, 0xE5,        // movw ax, !0xFE502
+        0xBE, 0xF8,              // movw SP, ax
+        0x61, 0xFC,              // reti
+    });
+
+    // Task 2 @ 0x02200: write sentinel 0xA5 to 0xFE504, stop TAU1 ch0 via TT1 (0xF01DC), BRK
+    WriteBytes(m, 0x02200u, {
+        0xCF, 0x04, 0xE5, 0xA5,  // mov !0xFE504, #0xA5
+        0x71, 0x00, 0xDC, 0x01,  // set1 !TT1.0 (0xF01DC)
+        0xFF,                    // brk
+    });
+
+    m.cpu.SetSP(0xFE40u);
+    m.cpu.SetPC(0x01000u);
+    const auto stop = m.RunSteps(500);
+    EXPECT_EQ(static_cast<int>(stop.reason), static_cast<int>(rl78::StopReason::BreakInsn));
+    EXPECT_EQ(m.bus.PeekByte(0xFE500u), 1u);
+    EXPECT_EQ(m.bus.PeekByte(0xFE504u), 0xA5u);
+    EXPECT_EQ(m.tau1.GetEnableMask(), 0x0000u);
+    EXPECT_EQ(m.tau1.GetTps(), 0x00F0u);
+
+    std::string out;
+    EXPECT_TRUE(m.ExecuteCommand("timers", out));
+    EXPECT_TRUE(out.find("TAU1 (4 ch):") != std::string::npos);
+    EXPECT_TRUE(out.find("RTC:") != std::string::npos);
+}
+
 }  // namespace
 
 int main() {
@@ -493,6 +561,7 @@ int main() {
     TestFourLevelInterruptsAndPeripherals();
     TestDisasmAndGdbRsp();
     TestFlashSelfProgrammingAndBootSwap();
+    TestTau1TickWakeAndPreemptiveSwitch();
 
     if (g_failures == 0) {
         std::printf("[PASS] All rl78emu C++ tests passed.\n");

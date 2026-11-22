@@ -245,12 +245,14 @@ private:
 };
 
 // ============================================================================
-// Timer Array Unit (TAU0 / TAU1: 8 x 16-bit Channels)
+// Timer Array Unit (TAU0 8-ch / TAU1 4-ch or 8-ch: 16-bit Channels)
 // ============================================================================
 
 class Rl78Tau final : public PeripheralDevice {
 public:
-    Rl78Tau(uint8_t unit_idx, Rl78Intc *intc, const std::array<uint8_t, 8> &irq_nums);
+    Rl78Tau(uint8_t unit_idx, Rl78Intc *intc,
+            const std::array<uint8_t, 8> &irq_nums,
+            uint8_t num_channels = 8u);
 
     uint8_t Read(uint32_t addr) override;
     void Write(uint32_t addr, uint8_t value) override;
@@ -260,9 +262,10 @@ public:
     void Tick(uint32_t cpu_cycles, uint32_t prs_cycles, uint32_t sub_cycles,
               uint32_t il_cycles, bool in_halt, bool in_stop) override;
 
-    uint16_t GetCounter(uint8_t ch) const { return (ch < 8u) ? tcr_[ch] : 0; }
-    uint16_t GetData(uint8_t ch) const { return (ch < 8u) ? tdr_[ch] : 0; }
-    uint16_t GetMode(uint8_t ch) const { return (ch < 8u) ? tmr_[ch] : 0; }
+    uint8_t NumChannels() const { return num_channels_; }
+    uint16_t GetCounter(uint8_t ch) const { return (ch < num_channels_) ? tcr_[ch] : 0; }
+    uint16_t GetData(uint8_t ch) const { return (ch < num_channels_) ? tdr_[ch] : 0; }
+    uint16_t GetMode(uint8_t ch) const { return (ch < num_channels_) ? tmr_[ch] : 0; }
     uint16_t GetEnableMask() const { return te_; }
     uint16_t GetTps() const { return tps_; }
 
@@ -287,6 +290,7 @@ private:
     uint32_t ChannelDivisor(uint8_t ch) const;
 
     uint8_t unit_ = 0;
+    uint8_t num_channels_ = 8u;
     Rl78Intc *intc_ = nullptr;
     std::array<uint8_t, 8> irq_nums_{};
 

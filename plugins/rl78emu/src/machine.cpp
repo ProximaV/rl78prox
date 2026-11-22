@@ -87,8 +87,8 @@ Rl78Machine::Rl78Machine()
     : clock(&bus),
       wdt(&bus, &cpu, &clock, &intc),
       ports(&intc),
-      tau0(0, &intc, { IRQ_TM00, IRQ_TM01, IRQ_TM02, IRQ_TM03, IRQ_TM04, IRQ_TM05, IRQ_TM06, IRQ_TM07 }),
-      tau1(1, &intc, { IRQ_TM10, IRQ_TM11, IRQ_TM12, IRQ_TM13, IRQ_TM14, IRQ_TM15, IRQ_TM16, IRQ_TM17 }),
+      tau0(0, &intc, { IRQ_TM00, IRQ_TM01, IRQ_TM02, IRQ_TM03, IRQ_TM04, IRQ_TM05, IRQ_TM06, IRQ_TM07 }, 8u),
+      tau1(1, &intc, { IRQ_TM10, IRQ_TM11, IRQ_TM12, IRQ_TM13, 0xFFu, 0xFFu, 0xFFu, 0xFFu }, 4u),
       rtc_it(&intc),
       adc(&intc),
       sau0(0, &intc),
@@ -329,17 +329,28 @@ std::string Rl78Machine::FormatClock() const {
 
 std::string Rl78Machine::FormatTimers() const {
     std::ostringstream oss;
-    char hdr[128];
-    std::snprintf(hdr, sizeof(hdr), "TAU0: TE0=%04X TPS0=%04X | ITMC=%04X (cnt=%03X)\n",
-                  tau0.GetEnableMask(), tau0.GetTps(), rtc_it.GetItmc(), rtc_it.GetItCounter());
+    auto dump_tau = [&](const char *name, uint8_t unit_idx, const Rl78Tau &tau) {
+        char hdr[96];
+        std::snprintf(hdr, sizeof(hdr), "%s (%u ch): TE%u=%04X TPS%u=%04X\n",
+                      name, tau.NumChannels(), unit_idx, tau.GetEnableMask(), unit_idx, tau.GetTps());
+        oss << hdr;
+        for (uint8_t ch = 0; ch < tau.NumChannels(); ++ch) {
+            char line[96];
+            std::snprintf(line, sizeof(line), "  CH%u: en=%d TCR=%04X TDR=%04X TMR=%04X\n",
+                          ch, (tau.GetEnableMask() & (1u << ch)) ? 1 : 0,
+                          tau.GetCounter(ch), tau.GetData(ch), tau.GetMode(ch));
+            oss << line;
+        }
+    };
+    dump_tau("TAU0", 0u, tau0);
+    dump_tau("TAU1", 1u, tau1);
+    char hdr[160];
+    std::snprintf(hdr, sizeof(hdr),
+                  "ITMC=%04X (cnt=%03X) | RTC: RTCC0=%02X RTCC1=%02X %02X:%02X:%02X\n",
+                  rtc_it.GetItmc(), rtc_it.GetItCounter(),
+                  rtc_it.Peek(0xFFF9Du), rtc_it.Peek(0xFFF9Eu),
+                  rtc_it.Peek(0xFFF94u), rtc_it.Peek(0xFFF93u), rtc_it.Peek(0xFFF92u));
     oss << hdr;
-    for (uint8_t ch = 0; ch < 8u; ++ch) {
-        char line[96];
-        std::snprintf(line, sizeof(line), "  CH%u: en=%d TCR=%04X TDR=%04X TMR=%04X\n",
-                      ch, (tau0.GetEnableMask() & (1u << ch)) ? 1 : 0,
-                      tau0.GetCounter(ch), tau0.GetData(ch), tau0.GetMode(ch));
-        oss << line;
-    }
     return oss.str();
 }
 
@@ -447,7 +458,7 @@ bool Rl78Machine::ExecuteCommand(const std::string &cmdline, std::string &out) {
             "  banks                 - Dump all 4 GPR register banks (RB0..RB3)\n"
             "  intc                  - Dump INTC IF/MK/PR0/PR1 & pending IRQ\n"
             "  clock                 - Dump clock, DFLCTL, LVI, RESF, and WDT state\n"
-            "  timers                - Dump TAU0 channels and ITMC state\n"
+            "  timers                - Dump TAU0/TAU1 channels, ITMC, and RTC state\n"
             "  ports                 - Dump GPIO ports P0..P15\n"
             "  sau                   - Dump SAU0/SAU1 UART/CSI state\n"
             "  adc                   - Dump ADC state\n"

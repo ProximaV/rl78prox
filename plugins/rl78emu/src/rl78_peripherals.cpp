@@ -598,8 +598,12 @@ void Rl78Ports::Poke(uint32_t addr, uint8_t value) {
 // Rl78Tau (TAU0 / TAU1)
 // ============================================================================
 
-Rl78Tau::Rl78Tau(uint8_t unit_idx, Rl78Intc *intc, const std::array<uint8_t, 8> &irq_nums)
-    : unit_(unit_idx), intc_(intc), irq_nums_(irq_nums) {
+Rl78Tau::Rl78Tau(uint8_t unit_idx, Rl78Intc *intc,
+                 const std::array<uint8_t, 8> &irq_nums, uint8_t num_channels)
+    : unit_(unit_idx),
+      num_channels_((num_channels >= 1u && num_channels <= 8u) ? num_channels : 8u),
+      intc_(intc),
+      irq_nums_(irq_nums) {
     Reset();
 }
 
@@ -620,16 +624,17 @@ bool Rl78Tau::DecodeAddr(uint32_t addr, RegKind *kind_out, uint8_t *ch_out, bool
             *kind_out = RegKind::Tdr;
             *ch_out = static_cast<uint8_t>((addr - 0xFFF18u) / 2u);
             *hi_out = ((addr & 1u) != 0);
-            return true;
+            return *ch_out < num_channels_;
         }
         if (addr >= 0xFFF64u && addr <= 0xFFF6Fu) {
             *kind_out = RegKind::Tdr;
             *ch_out = static_cast<uint8_t>(2u + (addr - 0xFFF64u) / 2u);
             *hi_out = ((addr & 1u) != 0);
-            return true;
+            return *ch_out < num_channels_;
         }
     } else {
-        if (addr >= 0xFFF70u && addr <= 0xFFF7Fu) {
+        const uint32_t tdr_end = 0xFFF70u + static_cast<uint32_t>(num_channels_) * 2u;
+        if (addr >= 0xFFF70u && addr < tdr_end) {
             *kind_out = RegKind::Tdr;
             *ch_out = static_cast<uint8_t>((addr - 0xFFF70u) / 2u);
             *hi_out = ((addr & 1u) != 0);
@@ -638,35 +643,37 @@ bool Rl78Tau::DecodeAddr(uint32_t addr, RegKind *kind_out, uint8_t *ch_out, bool
     }
 
     const uint32_t base2 = (unit_ == 0) ? 0xF0180u : 0xF01C0u;
-    if (addr < base2 || addr >= base2 + 0x40u) {
+    const uint32_t stride = static_cast<uint32_t>(num_channels_) * 2u;
+    const uint32_t reg_block_size = stride * 3u + 0x10u;
+    if (addr < base2 || addr >= base2 + reg_block_size) {
         return false;
     }
     const uint32_t off = addr - base2;
     *hi_out = ((off & 1u) != 0);
-    if (off < 0x10u) {
+    if (off < stride) {
         *kind_out = RegKind::Tcr;
         *ch_out = static_cast<uint8_t>(off / 2u);
         return true;
     }
-    if (off < 0x20u) {
+    if (off < stride * 2u) {
         *kind_out = RegKind::Tmr;
-        *ch_out = static_cast<uint8_t>((off - 0x10u) / 2u);
+        *ch_out = static_cast<uint8_t>((off - stride) / 2u);
         return true;
     }
-    if (off < 0x30u) {
+    if (off < stride * 3u) {
         *kind_out = RegKind::Tsr;
-        *ch_out = static_cast<uint8_t>((off - 0x20u) / 2u);
+        *ch_out = static_cast<uint8_t>((off - stride * 2u) / 2u);
         return true;
     }
-    switch (off & ~1u) {
-    case 0x30u: *kind_out = RegKind::Te;  return true;
-    case 0x32u: *kind_out = RegKind::Ts;  return true;
-    case 0x34u: *kind_out = RegKind::Tt;  return true;
-    case 0x36u: *kind_out = RegKind::Tps; return true;
-    case 0x38u: *kind_out = RegKind::To;  return true;
-    case 0x3Au: *kind_out = RegKind::Toe; return true;
-    case 0x3Cu: *kind_out = RegKind::Tol; return true;
-    case 0x3Eu: *kind_out = RegKind::Tom; return true;
+    switch ((off - stride * 3u) & ~1u) {
+    case 0x00u: *kind_out = RegKind::Te;  return true;
+    case 0x02u: *kind_out = RegKind::Ts;  return true;
+    case 0x04u: *kind_out = RegKind::Tt;  return true;
+    case 0x06u: *kind_out = RegKind::Tps; return true;
+    case 0x08u: *kind_out = RegKind::To;  return true;
+    case 0x0Au: *kind_out = RegKind::Toe; return true;
+    case 0x0Cu: *kind_out = RegKind::Tol; return true;
+    case 0x0Eu: *kind_out = RegKind::Tom; return true;
     default: return false;
     }
 }
@@ -683,7 +690,7 @@ void Rl78Tau::Write(uint32_t addr, uint8_t value) {
 
     if (kind == RegKind::Ts) {
         if (!hi) {
-            for (uint8_t c = 0; c < 8u; ++c) {
+            for (uint8_t c = 0; c < num_channels_; ++c) {
                 if ((value & (1u << c)) != 0) {
                     te_ |= static_cast<uint16_t>(1u << c);
                     tcr_[c] = tdr_[c];
@@ -695,7 +702,8 @@ void Rl78Tau::Write(uint32_t addr, uint8_t value) {
     }
     if (kind == RegKind::Tt) {
         if (!hi) {
-            te_ &= static_cast<uint16_t>(~value);
+            const uint16_t mask = static_cast<uint16_t>((1u << num_channels_) - 1u);
+            te_ &= static_cast<uint16_t>(~(value & mask));
         }
         return;
     }
@@ -753,7 +761,7 @@ uint32_t Rl78Tau::ChannelDivisor(uint8_t ch) const {
 void Rl78Tau::Tick(uint32_t, uint32_t prs_cycles, uint32_t, uint32_t, bool, bool) {
     if (prs_cycles == 0 || (te_ & 0x00FFu) == 0) return;
 
-    for (uint8_t ch = 0; ch < 8u; ++ch) {
+    for (uint8_t ch = 0; ch < num_channels_; ++ch) {
         if ((te_ & (1u << ch)) == 0) continue;
         const uint32_t div = ChannelDivisor(ch);
         acc_[ch] += prs_cycles;
